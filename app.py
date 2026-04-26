@@ -55,16 +55,12 @@ def generar_pdf_completo_orden(datos):
 def generar_pdf_tabla_historial(df):
     pdf = FPDF(orientation='L')
     pdf.add_page()
-    # Encabezado
-    pdf.set_font("Arial", 'B', 16); pdf.cell(0, 10, "REPORTE HISTÓRICO DE ÓRDENES - G-TECH", ln=True, align='C')
+    pdf.set_font("Arial", 'B', 16); pdf.cell(0, 10, "REPORTE HISTÓRICO - G-TECH", ln=True, align='C')
     pdf.ln(10)
-    # Cabecera de Tabla
     pdf.set_font("Arial", 'B', 10); pdf.set_fill_color(14, 75, 122); pdf.set_text_color(255, 255, 255)
-    headers, widths = ["Orden", "Cliente", "Material", "Etapa Actual", "Estado"], [30, 70, 70, 60, 45]
+    headers, widths = ["Orden", "Cliente", "Material", "Etapa", "Estado"], [30, 70, 70, 60, 45]
     for i, h in enumerate(headers): pdf.cell(widths[i], 10, h, border=1, fill=True, align='C')
-    pdf.ln()
-    # Contenido
-    pdf.set_font("Arial", size=9); pdf.set_text_color(0, 0, 0)
+    pdf.ln(); pdf.set_font("Arial", size=9); pdf.set_text_color(0, 0, 0)
     for _, row in df.iterrows():
         pdf.cell(widths[0], 8, str(row["n_orden"]), border=1, align='C')
         pdf.cell(widths[1], 8, str(row["cliente"])[:35], border=1)
@@ -80,7 +76,7 @@ def reset_manual():
     st.session_state.registro_ok = False
     st.session_state.id_proxima = obtener_primera_id_disponible()
 
-# --- 3. ESTILO VISUAL (PANTALLA DE INICIO CENTRADA) ---
+# --- 3. ESTILO VISUAL ---
 st.set_page_config(page_title="G-Tech Engineering", layout="wide")
 
 st.markdown("""
@@ -112,7 +108,6 @@ else:
     st.markdown("<h2 style='text-align:center; color:#0e4b7a;'>🛡️ Panel de Control Operativo</h2>", unsafe_allow_html=True)
     t1, t2, t3 = st.tabs(["📝 REGISTRO", "⚙️ TRAZABILIDAD", "📊 HISTORIAL"])
 
-    # --- PESTAÑA 1: REGISTRO ---
     with t1:
         if st.session_state.get('registro_ok'):
             st.success("✅ Orden registrada satisfactoriamente.")
@@ -134,6 +129,41 @@ else:
                         ordenes_col.insert_one(d); st.session_state.ultima_orden = d; st.session_state.registro_ok = True; st.rerun()
                     else: st.error("El plano técnico es obligatorio.")
 
-    # --- PESTAÑA 2: TRAZABILIDAD (Reactiva) ---
     with t2:
-        st.markdown("### Segu
+        st.markdown("### Seguimiento de Procesos")
+        activas = list(ordenes_col.find({"status": "Pendiente"}))
+        if activas:
+            lista_ids = [o["n_orden"] for o in activas]
+            sel_orden = st.selectbox("1. Seleccione el número de orden", lista_ids)
+            orden_data = next(item for item in activas if item["n_orden"] == sel_orden)
+            et_act = str(orden_data.get("etapa", "Registro")).strip()
+            
+            if et_act in ETAPAS_MASTER:
+                idx = ETAPAS_MASTER.index(et_act)
+                disp = ETAPAS_MASTER[idx + 1:]
+            else:
+                disp = ETAPAS_MASTER[1:]
+
+            if disp:
+                with st.form("form_update_etapa"):
+                    st.info(f"Etapa actual: **{et_act}**")
+                    et_nueva = st.selectbox("2. Seleccione la siguiente etapa", disp)
+                    h1, h2 = st.columns(2)
+                    t_i, t_f = h1.time_input("Hora Inicio"), h2.time_input("Hora Fin")
+                    obs = st.text_area("Notas del proceso")
+                    if st.form_submit_button("✅ ACTUALIZAR PROCESO"):
+                        st_f = "Finalizado" if et_nueva == "Finalizado" else "Pendiente"
+                        ordenes_col.update_one({"n_orden": sel_orden}, {"$set": {"etapa": et_nueva, "status": st_f}, "$push": {"historial": {"etapa": et_nueva, "inicio": str(t_i), "fin": str(t_f), "nota": obs}}})
+                        st.success("Actualizado."); time.sleep(1); st.rerun()
+            else: st.warning("Proceso completado.")
+        else: st.info("No hay órdenes pendientes.")
+
+    with t3:
+        st.markdown("### Historial General")
+        todo = list(ordenes_col.find())
+        if todo:
+            df = pd.DataFrame(todo)[["n_orden", "cliente", "material", "etapa", "status"]]
+            st.dataframe(df.style.map(lambda x: f'background-color: {"#d4edda" if x == "Finalizado" else "#f8d7da"}', subset=['status']), use_container_width=True)
+            st.divider()
+            pdf_hist = generar_pdf_tabla_historial(df)
+            st.download_button("📥 DESCARGAR REPORTE HISTÓRICO (PDF)", data=pdf_hist, file_name="Historial_GTech.pdf", mime="application/pdf")
