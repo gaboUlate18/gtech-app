@@ -5,7 +5,7 @@ from datetime import datetime
 from fpdf import FPDF
 import time
 
-# --- 1. CONEXIÓN ---
+# --- 1. CONFIGURACIÓN Y CONEXIÓN ---
 MONGO_URL = "mongodb+srv://gtech:Ingenieria2026@g-tech.0p52gdx.mongodb.net/?appName=G-Tech"
 
 @st.cache_resource
@@ -17,11 +17,12 @@ try:
     db = client.GTechDB
     ordenes_col = db.ordenes
 except:
-    st.error("Error de conexión con la base de datos.")
+    st.error("⚠️ Error de conexión con el servidor de datos.")
 
-# --- 2. LÓGICA DE NEGOCIO ---
+# --- 2. LÓGICA DE PROCESOS ---
 
 def obtener_primera_id_disponible():
+    """Busca el primer hueco numérico disponible empezando desde la ID 1."""
     try:
         cursor = ordenes_col.find({}, {"n_orden": 1, "_id": 0})
         ids_ocupadas = set()
@@ -36,32 +37,55 @@ def obtener_primera_id_disponible():
     except:
         return "1"
 
-def reset_manual():
-    for key in list(st.session_state.keys()):
-        if "form_" in key: del st.session_state[key]
-    st.session_state.registro_ok = False
-    st.session_state.id_proxima = obtener_primera_id_disponible()
-
-# --- 3. GENERACIÓN DE REPORTES PDF ---
-
-def generar_pdf_orden(datos):
+def generar_pdf_completo_orden(datos):
+    """PDF detallado con todos los datos de la orden."""
     pdf = FPDF()
     pdf.add_page()
+    
+    # Encabezado G-TECH
     pdf.set_fill_color(14, 75, 122)
-    pdf.rect(0, 0, 210, 45, 'F')
-    pdf.set_font("Arial", 'B', 20); pdf.set_text_color(255, 255, 255)
-    pdf.cell(0, 15, "G-TECH ENGINEERING", ln=True, align='C')
-    pdf.ln(30); pdf.set_text_color(0, 0, 0)
-    pdf.set_font("Arial", 'B', 12)
-    for k, v in [("ID Orden:", datos['n_orden']), ("Cliente:", datos['cliente']), ("Material:", datos['material']), ("Etapa:", datos.get('etapa', 'Registro'))]:
-        pdf.cell(50, 8, k); pdf.cell(0, 8, str(v), ln=True)
+    pdf.rect(0, 0, 210, 40, 'F')
+    pdf.set_font("Arial", 'B', 22); pdf.set_text_color(255, 255, 255)
+    pdf.cell(0, 20, "G-TECH ENGINEERING", ln=True, align='C')
+    pdf.set_font("Arial", '', 12)
+    pdf.cell(0, 10, "Comprobante de Registro de Orden", ln=True, align='C')
+    
+    pdf.ln(20); pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(0, 10, f"DETALLES DE LA ORDEN # {datos['n_orden']}", ln=True)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(5)
+    
+    # Cuerpo del PDF con todos los datos
+    pdf.set_font("Arial", 'B', 11)
+    detalles = [
+        ("Cliente:", datos['cliente']),
+        ("Material:", datos['material']),
+        ("Cantidad:", str(datos['cantidad'])),
+        ("Fecha de Ingreso:", datos['f_recepcion']),
+        ("Fecha de Entrega:", datos['entrega']),
+        ("Etapa Inicial:", datos['etapa']),
+        ("Estatus actual:", datos['status'])
+    ]
+    
+    for label, valor in detalles:
+        pdf.set_font("Arial", 'B', 11)
+        pdf.cell(50, 10, label)
+        pdf.set_font("Arial", '', 11)
+        pdf.cell(0, 10, valor, ln=True)
+    
+    pdf.ln(10)
+    pdf.set_font("Arial", 'I', 10)
+    pdf.multi_cell(0, 10, "Este documento confirma que la orden ha sido ingresada correctamente en el sistema de trazabilidad de G-Tech. El plano técnico ha sido adjuntado digitalmente al registro.")
+    
     return pdf.output(dest='S').encode('latin-1')
 
-def generar_pdf_historial(df):
+def generar_pdf_tabla_historial(df):
     pdf = FPDF(orientation='L')
     pdf.add_page()
-    pdf.set_font("Arial", 'B', 16); pdf.cell(0, 10, "REPORTE DE HISTORIAL G-TECH", ln=True, align='C')
-    pdf.ln(10); pdf.set_font("Arial", 'B', 10); pdf.set_fill_color(200, 200, 200)
+    pdf.set_font("Arial", 'B', 16); pdf.cell(0, 10, "REPORTE GENERAL DE HISTORIAL - G-TECH", ln=True, align='C')
+    pdf.ln(10)
+    pdf.set_font("Arial", 'B', 10); pdf.set_fill_color(200, 200, 200)
     headers, widths = ["Orden", "Cliente", "Material", "Etapa", "Estado"], [30, 70, 70, 50, 40]
     for i, h in enumerate(headers): pdf.cell(widths[i], 10, h, border=1, fill=True)
     pdf.ln(); pdf.set_font("Arial", size=9)
@@ -71,17 +95,33 @@ def generar_pdf_historial(df):
         pdf.ln()
     return pdf.output(dest='S').encode('latin-1')
 
-# --- 4. INTERFAZ ---
+def reset_manual():
+    for key in list(st.session_state.keys()):
+        if "form_" in key: del st.session_state[key]
+    st.session_state.registro_ok = False
+    st.session_state.id_proxima = obtener_primera_id_disponible()
+
+# --- 3. INTERFAZ ---
 st.set_page_config(page_title="G-Tech System", layout="wide")
+
+# Lista Maestra de Etapas con el orden solicitado
+ETAPAS_MASTER = [
+    "Registro", 
+    "Diseño", 
+    "Preparación del material", 
+    "Maquinado", 
+    "Rectificado", 
+    "Control de Calidad", 
+    "Empaque", 
+    "Finalizado"
+]
 
 if 'auth' not in st.session_state: st.session_state.auth = False
 if 'id_proxima' not in st.session_state: st.session_state.id_proxima = obtener_primera_id_disponible()
 if 'registro_ok' not in st.session_state: st.session_state.registro_ok = False
 
-st.markdown("""<style>.main-title { color: #0e4b7a; text-align: center; font-weight: 800; font-size: 3.5rem; margin-top: 50px; }</style>""", unsafe_allow_html=True)
-
 if not st.session_state.auth:
-    st.markdown("<h1 class='main-title'>G-TECH ENGINEERING</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align:center; color:#0e4b7a; margin-top:50px;'>G-TECH ENGINEERING</h1>", unsafe_allow_html=True)
     _, col, _ = st.columns([1, 1, 1])
     if col.button("🔓 INGRESAR AL PANEL"): st.session_state.auth = True; st.rerun()
 
@@ -92,9 +132,9 @@ else:
     with t1:
         if st.session_state.registro_ok:
             st.success(f"✅ Orden {st.session_state.ultima_orden['n_orden']} registrada.")
-            pdf_b = generar_pdf_orden(st.session_state.ultima_orden)
+            pdf_b = generar_pdf_completo_orden(st.session_state.ultima_orden)
             c1, c2 = st.columns(2)
-            c1.download_button("📥 DESCARGAR PDF", data=pdf_b, file_name=f"Orden_{st.session_state.ultima_orden['n_orden']}.pdf")
+            c1.download_button("📥 DESCARGAR COMPROBANTE PDF", data=pdf_b, file_name=f"Orden_{st.session_state.ultima_orden['n_orden']}.pdf")
             if c2.button("➕ NUEVA ORDEN"): reset_manual(); st.rerun()
         else:
             with st.form("form_reg"):
@@ -106,31 +146,24 @@ else:
                 up = st.file_uploader("Cargar Plano Técnico", type=['pdf','png','jpg'])
                 if st.form_submit_button("💾 GUARDAR"):
                     if up is None: st.error("El plano es obligatorio.")
-                    elif ordenes_col.find_one({"n_orden": n_id}): st.error("ID ocupada."); st.rerun()
+                    elif ordenes_col.find_one({"n_orden": n_id}): st.error("ID ya ocupada."); st.rerun()
                     else:
                         d = {"n_orden": n_id, "cliente": cli, "f_recepcion": str(f_in), "material": mat, "cantidad": cant, "entrega": str(f_out), "etapa": "Registro", "status": "Pendiente", "historial": []}
                         ordenes_col.insert_one(d); st.session_state.ultima_orden = d; st.session_state.registro_ok = True; st.rerun()
                 if st.form_submit_button("🧹 LIMPIAR"): reset_manual(); st.rerun()
 
     with t2:
-        st.markdown("### ⚙️ Trazabilidad de Procesos")
+        st.markdown("### ⚙️ Actualización de Etapas")
         activas = list(ordenes_col.find({"status": "Pendiente"}))
         if activas:
-            etapas_full = ["Registro", "Maquinado", "Rectificado", "Tratamiento", "Ensamble", "Calidad", "Pulido", "Finalizado"]
-            
             with st.form("form_traz"):
                 sel = st.selectbox("Seleccionar Orden", [o["n_orden"] for o in activas])
                 orden_data = next(item for item in activas if item["n_orden"] == sel)
-                
-                # CORRECCIÓN: Limpieza de espacios y validación de índice
                 etapa_actual = str(orden_data.get("etapa", "Registro")).strip()
                 
-                if etapa_actual in etapas_full:
-                    indice_actual = etapas_full.index(etapa_actual)
-                else:
-                    indice_actual = 0 # Por seguridad, si no se encuentra, empieza desde el inicio
-                
-                etapas_disponibles = etapas_full[indice_actual + 1:]
+                # Filtrar para no repetir etapas pasadas
+                idx = ETAPAS_MASTER.index(etapa_actual) if etapa_actual in ETAPAS_MASTER else 0
+                etapas_disponibles = ETAPAS_MASTER[idx + 1:]
                 
                 if etapas_disponibles:
                     et = st.selectbox("Siguiente Etapa", etapas_disponibles)
@@ -140,14 +173,14 @@ else:
                     if st.form_submit_button("ACTUALIZAR"):
                         st_f = "Finalizado" if et == "Finalizado" else "Pendiente"
                         ordenes_col.update_one({"n_orden": sel}, {"$set": {"etapa": et, "status": st_f}, "$push": {"historial": {"etapa": et, "inicio": str(t_i), "fin": str(t_f), "nota": obs}}})
-                        st.success(f"Orden {sel} movida a {et}."); time.sleep(1); st.rerun()
+                        st.success(f"Orden {sel} actualizada a {et}."); time.sleep(1); st.rerun()
                 else:
-                    st.warning("Esta orden ya ha completado todas las etapas disponibles.")
+                    st.warning("Orden completa.")
                     st.form_submit_button("Cerrar", disabled=True)
         else: st.info("No hay órdenes pendientes.")
 
     with t3:
-        st.markdown("### 📊 Historial y Estatus Visual")
+        st.markdown("### 📊 Historial y Gestión Visual")
         todo = list(ordenes_col.find())
         if todo:
             df = pd.DataFrame(todo)[["n_orden", "cliente", "material", "etapa", "status"]]
@@ -155,5 +188,5 @@ else:
                 return f'background-color: {"#d4edda" if val == "Finalizado" else "#f8d7da"}'
             st.dataframe(df.style.map(color_status, subset=['status']), use_container_width=True)
             if st.button("📄 GENERAR PDF DEL HISTORIAL COMPLETO"):
-                st.download_button("📥 DESCARGAR REPORTE", data=generar_pdf_historial(df), file_name="Historial_GTech.pdf")
-        else: st.warning("Sin datos.")
+                st.download_button("📥 DESCARGAR REPORTE", data=generar_pdf_tabla_historial(df), file_name="Historial_Completo_GTech.pdf")
+        else: st.warning("Sin datos registrados.")
