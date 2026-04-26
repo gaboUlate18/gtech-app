@@ -116,16 +116,20 @@ else:
         st.markdown("### ⚙️ Trazabilidad de Procesos")
         activas = list(ordenes_col.find({"status": "Pendiente"}))
         if activas:
-            # Lista maestra de etapas
             etapas_full = ["Registro", "Maquinado", "Rectificado", "Tratamiento", "Ensamble", "Calidad", "Pulido", "Finalizado"]
             
             with st.form("form_traz"):
                 sel = st.selectbox("Seleccionar Orden", [o["n_orden"] for o in activas])
                 orden_data = next(item for item in activas if item["n_orden"] == sel)
-                etapa_actual = orden_data.get("etapa", "Registro")
                 
-                # FILTRO DINÁMICO: Solo mostrar etapas que NO han pasado
-                indice_actual = etapas_full.index(etapa_actual)
+                # CORRECCIÓN: Limpieza de espacios y validación de índice
+                etapa_actual = str(orden_data.get("etapa", "Registro")).strip()
+                
+                if etapa_actual in etapas_full:
+                    indice_actual = etapas_full.index(etapa_actual)
+                else:
+                    indice_actual = 0 # Por seguridad, si no se encuentra, empieza desde el inicio
+                
                 etapas_disponibles = etapas_full[indice_actual + 1:]
                 
                 if etapas_disponibles:
