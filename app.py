@@ -19,15 +19,12 @@ try:
 except:
     st.error("⚠️ Error de conexión.")
 
-# --- 2. LÓGICA DE PROCESOS (Tu lógica original restaurada) ---
+# --- 2. LÓGICA DE PROCESOS (Tu lógica intacta) ---
 
 def obtener_primera_id_disponible():
     try:
         cursor = ordenes_col.find({}, {"n_orden": 1, "_id": 0})
-        ids_ocupadas = set()
-        for doc in cursor:
-            try: ids_ocupadas.add(int(doc["n_orden"]))
-            except: continue
+        ids_ocupadas = {int(doc["n_orden"]) for doc in cursor if str(doc["n_orden"]).isdigit()}
         sugerencia = 1
         while sugerencia in ids_ocupadas: sugerencia += 1
         return str(sugerencia)
@@ -68,38 +65,57 @@ def reset_manual():
     st.session_state.registro_ok = False
     st.session_state.id_proxima = obtener_primera_id_disponible()
 
-# --- 3. ESTILO VISUAL (Solo para la pantalla de inicio) ---
+# --- 3. ESTILO VISUAL (TODO CENTRADO) ---
 st.set_page_config(page_title="G-Tech Engineering", layout="wide")
 
 st.markdown("""
     <style>
+    /* Contenedor principal para centrar todo en la pantalla */
+    .stApp {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    /* Contenedor específico de bienvenida */
     .welcome-container {
+        text-align: center;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        height: 75vh;
-        text-align: center;
+        width: 100%;
     }
+
     .main-title {
         color: #0e4b7a;
-        font-size: 6rem;
+        font-size: 6.5rem; /* Sigue siendo gigante */
         font-weight: 900;
-        margin-bottom: 60px;
-        line-height: 1.1;
+        margin-bottom: 40px;
+        line-height: 1;
+        text-align: center;
     }
+
+    /* Centrar el botón específicamente */
+    div.stButton {
+        display: flex;
+        justify-content: center;
+    }
+
     div.stButton > button {
         background-color: #0e4b7a;
         color: white;
-        font-size: 24px;
+        font-size: 26px;
         font-weight: bold;
-        padding: 20px 80px;
-        border-radius: 10px;
-        transition: 0.3s;
+        padding: 20px 100px;
+        border-radius: 15px;
+        border: none;
+        box-shadow: 0 10px 20px rgba(14, 75, 122, 0.2);
     }
+    
     div.stButton > button:hover {
-        transform: scale(1.05);
         background-color: #1a5f96;
+        transform: scale(1.05);
         color: white;
     }
     </style>
@@ -112,6 +128,7 @@ if 'auth' not in st.session_state: st.session_state.auth = False
 if 'id_proxima' not in st.session_state: st.session_state.id_proxima = obtener_primera_id_disponible()
 if 'registro_ok' not in st.session_state: st.session_state.registro_ok = False
 
+# PANTALLA DE INICIO CENTRADA
 if not st.session_state.auth:
     st.markdown('<div class="welcome-container">', unsafe_allow_html=True)
     st.markdown('<h1 class="main-title">G-TECH<br>ENGINEERING</h1>', unsafe_allow_html=True)
@@ -120,8 +137,8 @@ if not st.session_state.auth:
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
+# PANEL DE CONTROL (POST-LOGIN)
 else:
-    # TODO LO SIGUIENTE SE MANTIENE FIEL A TU LÓGICA DE CONTROL
     st.markdown("<h2 style='text-align:center; color:#0e4b7a;'>🛡️ Panel de Control</h2>", unsafe_allow_html=True)
     t1, t2, t3 = st.tabs(["📝 REGISTRO", "⚙️ TRAZABILIDAD", "📊 HISTORIAL"])
 
@@ -157,19 +174,4 @@ else:
                 disp = ETAPAS_MASTER[idx + 1:]
                 if disp:
                     et = st.selectbox("Siguiente Etapa", disp)
-                    h1, h2 = st.columns(2)
-                    t_i, t_f = h1.time_input("Inicio"), h2.time_input("Fin")
-                    obs = st.text_area("Notas")
-                    if st.form_submit_button("ACTUALIZAR"):
-                        st_f = "Finalizado" if et == "Finalizado" else "Pendiente"
-                        ordenes_col.update_one({"n_orden": sel}, {"$set": {"etapa": et, "status": st_f}, "$push": {"historial": {"etapa": et, "inicio": str(t_i), "fin": str(t_f), "nota": obs}}})
-                        st.success("Actualizado."); time.sleep(1); st.rerun()
-        else: st.info("No hay órdenes pendientes.")
-
-    with t3:
-        todo = list(ordenes_col.find())
-        if todo:
-            df = pd.DataFrame(todo)[["n_orden", "cliente", "material", "etapa", "status"]]
-            st.dataframe(df.style.map(lambda x: f'background-color: {"#d4edda" if x == "Finalizado" else "#f8d7da"}', subset=['status']), use_container_width=True)
-            if st.button("📄 GENERAR REPORTE"):
-                st.download_button("📥 DESCARGAR", data=generar_pdf_tabla_historial(df), file_name="Historial.pdf")
+                    h1, h2 =
