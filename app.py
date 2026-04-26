@@ -19,7 +19,7 @@ try:
 except:
     st.error("⚠️ Error de conexión.")
 
-# --- 2. LÓGICA DE PROCESOS (Tu lógica intacta) ---
+# --- 2. LÓGICA DE PROCESOS ---
 
 def obtener_primera_id_disponible():
     try:
@@ -40,9 +40,19 @@ def generar_pdf_completo_orden(datos):
     pdf.ln(20); pdf.set_text_color(0, 0, 0); pdf.set_font("Arial", 'B', 14)
     pdf.cell(0, 10, f"ORDEN # {datos['n_orden']}", ln=True)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y()); pdf.ln(5)
-    for k, v in [("Cliente:", datos['cliente']), ("Material:", datos['material']), ("Cantidad:", str(datos['cantidad'])), ("Ingreso:", datos['f_recepcion']), ("Entrega:", datos['entrega']), ("Etapa:", datos['etapa']), ("Estatus:", datos['status'])]:
+    
+    campos = [
+        ("Cliente:", datos['cliente']), 
+        ("Material:", datos['material']), 
+        ("Cantidad:", str(datos['cantidad'])), 
+        ("Ingreso:", datos['f_recepcion']), 
+        ("Entrega:", datos['entrega']), 
+        ("Etapa Actual:", datos['etapa']), 
+        ("Estatus:", datos['status'])
+    ]
+    for k, v in campos:
         pdf.set_font("Arial", 'B', 11); pdf.cell(50, 10, k)
-        pdf.set_font("Arial", '', 11); pdf.cell(0, 10, v, ln=True)
+        pdf.set_font("Arial", '', 11); pdf.cell(0, 10, str(v), ln=True)
     return pdf.output(dest='S').encode('latin-1')
 
 def generar_pdf_tabla_historial(df):
@@ -70,14 +80,11 @@ st.set_page_config(page_title="G-Tech Engineering", layout="wide")
 
 st.markdown("""
     <style>
-    /* Contenedor principal para centrar todo en la pantalla */
     .stApp {
         display: flex;
         align-items: center;
         justify-content: center;
     }
-    
-    /* Contenedor específico de bienvenida */
     .welcome-container {
         text-align: center;
         display: flex;
@@ -86,22 +93,17 @@ st.markdown("""
         justify-content: center;
         width: 100%;
     }
-
     .main-title {
         color: #0e4b7a;
-        font-size: 6.5rem; /* Sigue siendo gigante */
+        font-size: 6.5rem;
         font-weight: 900;
         margin-bottom: 40px;
         line-height: 1;
-        text-align: center;
     }
-
-    /* Centrar el botón específicamente */
     div.stButton {
         display: flex;
         justify-content: center;
     }
-
     div.stButton > button {
         background-color: #0e4b7a;
         color: white;
@@ -112,7 +114,6 @@ st.markdown("""
         border: none;
         box-shadow: 0 10px 20px rgba(14, 75, 122, 0.2);
     }
-    
     div.stButton > button:hover {
         background-color: #1a5f96;
         transform: scale(1.05);
@@ -128,7 +129,7 @@ if 'auth' not in st.session_state: st.session_state.auth = False
 if 'id_proxima' not in st.session_state: st.session_state.id_proxima = obtener_primera_id_disponible()
 if 'registro_ok' not in st.session_state: st.session_state.registro_ok = False
 
-# PANTALLA DE INICIO CENTRADA
+# PANTALLA DE INICIO
 if not st.session_state.auth:
     st.markdown('<div class="welcome-container">', unsafe_allow_html=True)
     st.markdown('<h1 class="main-title">G-TECH<br>ENGINEERING</h1>', unsafe_allow_html=True)
@@ -137,14 +138,14 @@ if not st.session_state.auth:
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
-# PANEL DE CONTROL (POST-LOGIN)
+# PANEL DE CONTROL
 else:
     st.markdown("<h2 style='text-align:center; color:#0e4b7a;'>🛡️ Panel de Control</h2>", unsafe_allow_html=True)
     t1, t2, t3 = st.tabs(["📝 REGISTRO", "⚙️ TRAZABILIDAD", "📊 HISTORIAL"])
 
     with t1:
         if st.session_state.get('registro_ok'):
-            st.success(f"✅ Orden registrada.")
+            st.success("✅ Orden registrada.")
             pdf_b = generar_pdf_completo_orden(st.session_state.ultima_orden)
             c1, c2 = st.columns(2)
             c1.download_button("📥 DESCARGAR PDF", data=pdf_b, file_name=f"Orden_{st.session_state.ultima_orden['n_orden']}.pdf")
@@ -174,4 +175,10 @@ else:
                 disp = ETAPAS_MASTER[idx + 1:]
                 if disp:
                     et = st.selectbox("Siguiente Etapa", disp)
-                    h1, h2 =
+                    h1, h2 = st.columns(2)
+                    t_i = h1.time_input("Inicio") # CORREGIDO: h1 asignado correctamente
+                    t_f = h2.time_input("Fin")    # CORREGIDO: h2 asignado correctamente
+                    obs = st.text_area("Notas")
+                    if st.form_submit_button("ACTUALIZAR"):
+                        st_f = "Finalizado" if et == "Finalizado" else "Pendiente"
+                        ordenes_col.update_one({"n_orden": sel}, {"$set": {"etapa": et, "status": st_f}, "$push": {"historial": {"etapa": et, "inicio": str(t_i), "fin": str(t_f), "nota": obs}}})
