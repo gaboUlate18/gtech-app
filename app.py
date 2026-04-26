@@ -6,7 +6,7 @@ from fpdf import FPDF
 import time
 
 # --- 1. CONFIGURACIÓN Y CONEXIÓN ---
-MONGO_URL = "mongodb+srv://gtech:Ingenieria2026@g-tech.0p52gdx.mongodb.net/?appName=G-Tech"
+MONGO_URL = "TU_LINK_DE_MONGODB_AQUI"
 
 @st.cache_resource
 def init_connection():
@@ -52,13 +52,35 @@ def generar_pdf_completo_orden(datos):
         pdf.set_font("Arial", '', 11); pdf.cell(0, 10, str(v), ln=True)
     return pdf.output(dest='S').encode('latin-1')
 
+def generar_pdf_tabla_historial(df):
+    pdf = FPDF(orientation='L')
+    pdf.add_page()
+    # Encabezado
+    pdf.set_font("Arial", 'B', 16); pdf.cell(0, 10, "REPORTE HISTÓRICO DE ÓRDENES - G-TECH", ln=True, align='C')
+    pdf.ln(10)
+    # Cabecera de Tabla
+    pdf.set_font("Arial", 'B', 10); pdf.set_fill_color(14, 75, 122); pdf.set_text_color(255, 255, 255)
+    headers, widths = ["Orden", "Cliente", "Material", "Etapa Actual", "Estado"], [30, 70, 70, 60, 45]
+    for i, h in enumerate(headers): pdf.cell(widths[i], 10, h, border=1, fill=True, align='C')
+    pdf.ln()
+    # Contenido
+    pdf.set_font("Arial", size=9); pdf.set_text_color(0, 0, 0)
+    for _, row in df.iterrows():
+        pdf.cell(widths[0], 8, str(row["n_orden"]), border=1, align='C')
+        pdf.cell(widths[1], 8, str(row["cliente"])[:35], border=1)
+        pdf.cell(widths[2], 8, str(row["material"])[:35], border=1)
+        pdf.cell(widths[3], 8, str(row["etapa"]), border=1)
+        pdf.cell(widths[4], 8, str(row["status"]), border=1, align='C')
+        pdf.ln()
+    return pdf.output(dest='S').encode('latin-1')
+
 def reset_manual():
     for key in list(st.session_state.keys()):
         if "form_" in key: del st.session_state[key]
     st.session_state.registro_ok = False
     st.session_state.id_proxima = obtener_primera_id_disponible()
 
-# --- 3. ESTILO VISUAL (PANTALLA DE INICIO) ---
+# --- 3. ESTILO VISUAL (PANTALLA DE INICIO CENTRADA) ---
 st.set_page_config(page_title="G-Tech Engineering", layout="wide")
 
 st.markdown("""
@@ -87,16 +109,17 @@ if not st.session_state.auth:
     st.markdown('</div>', unsafe_allow_html=True)
 
 else:
-    st.markdown("<h2 style='text-align:center; color:#0e4b7a;'>🛡️ Panel de Control</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align:center; color:#0e4b7a;'>🛡️ Panel de Control Operativo</h2>", unsafe_allow_html=True)
     t1, t2, t3 = st.tabs(["📝 REGISTRO", "⚙️ TRAZABILIDAD", "📊 HISTORIAL"])
 
+    # --- PESTAÑA 1: REGISTRO ---
     with t1:
         if st.session_state.get('registro_ok'):
             st.success("✅ Orden registrada satisfactoriamente.")
             pdf_b = generar_pdf_completo_orden(st.session_state.ultima_orden)
             c1, c2 = st.columns(2)
-            c1.download_button("📥 DESCARGAR PDF", data=pdf_b, file_name=f"Orden_{st.session_state.ultima_orden['n_orden']}.pdf")
-            if c2.button("➕ NUEVA ORDEN"): reset_manual(); st.rerun()
+            c1.download_button("📥 DESCARGAR PDF DE ORDEN", data=pdf_b, file_name=f"Orden_{st.session_state.ultima_orden['n_orden']}.pdf")
+            if c2.button("➕ REGISTRAR OTRA ORDEN"): reset_manual(); st.rerun()
         else:
             with st.form("form_reg"):
                 c1, c2 = st.columns(2)
@@ -104,59 +127,13 @@ else:
                 n_id = c2.text_input("ID Orden Sugerida", value=st.session_state.id_proxima)
                 cli, cant = c1.text_input("Cliente"), c2.number_input("Cantidad", min_value=1)
                 mat, f_out = c1.text_input("Material"), c2.date_input("Fecha Entrega")
-                up = st.file_uploader("Plano Técnico", type=['pdf','png','jpg'])
+                up = st.file_uploader("Cargar Plano Técnico", type=['pdf','png','jpg'])
                 if st.form_submit_button("💾 GUARDAR ORDEN"):
                     if up:
                         d = {"n_orden": n_id, "cliente": cli, "f_recepcion": str(f_in), "material": mat, "cantidad": cant, "entrega": str(f_out), "etapa": "Registro", "status": "Pendiente", "historial": []}
                         ordenes_col.insert_one(d); st.session_state.ultima_orden = d; st.session_state.registro_ok = True; st.rerun()
                     else: st.error("El plano técnico es obligatorio.")
 
+    # --- PESTAÑA 2: TRAZABILIDAD (Reactiva) ---
     with t2:
-        st.markdown("### Actualización de Etapa")
-        activas = list(ordenes_col.find({"status": "Pendiente"}))
-        
-        if activas:
-            # SELECTOR FUERA DEL FORM para actualización inmediata
-            lista_ids = [o["n_orden"] for o in activas]
-            sel_orden = st.selectbox("1. Seleccione el número de orden", lista_ids)
-            
-            # Buscamos la data de la orden seleccionada
-            orden_data = next(item for item in activas if item["n_orden"] == sel_orden)
-            et_act = str(orden_data.get("etapa", "Registro")).strip()
-            
-            # Filtro de etapas (Poka-Yoke)
-            if et_act in ETAPAS_MASTER:
-                idx = ETAPAS_MASTER.index(et_act)
-                disp = ETAPAS_MASTER[idx + 1:]
-            else:
-                disp = ETAPAS_MASTER[1:]
-
-            if disp:
-                # FORMULARIO SOLO PARA LOS DATOS DE LA ETAPA
-                with st.form("form_update_etapa"):
-                    st.info(f"Etapa actual: **{et_act}**")
-                    et_nueva = st.selectbox("2. Seleccione la siguiente etapa", disp)
-                    h1, h2 = st.columns(2)
-                    t_i, t_f = h1.time_input("Hora Inicio"), h2.time_input("Hora Fin")
-                    obs = st.text_area("Observaciones")
-                    
-                    if st.form_submit_button("✅ CONFIRMAR CAMBIO DE ETAPA"):
-                        st_f = "Finalizado" if et_nueva == "Finalizado" else "Pendiente"
-                        ordenes_col.update_one(
-                            {"n_orden": sel_orden}, 
-                            {"$set": {"etapa": et_nueva, "status": st_f}, 
-                             "$push": {"historial": {"etapa": et_nueva, "inicio": str(t_i), "fin": str(t_f), "nota": obs}}}
-                        )
-                        st.success(f"Orden {sel_orden} actualizada a {et_nueva}.")
-                        time.sleep(1)
-                        st.rerun()
-            else:
-                st.warning("Esta orden ya alcanzó la etapa final.")
-        else:
-            st.info("No hay órdenes pendientes.")
-
-    with t3:
-        todo = list(ordenes_col.find())
-        if todo:
-            df = pd.DataFrame(todo)[["n_orden", "cliente", "material", "etapa", "status"]]
-            st.dataframe(df.style.map(lambda x: f'background-color: {"#d4edda" if x == "Finalizado" else "#f8d7da"}', subset=['status']), use_container_width=True)
+        st.markdown("### Segu
