@@ -5,7 +5,7 @@ from datetime import datetime
 from fpdf import FPDF
 
 # 1. CONFIGURACIÓN DE CONEXIÓN
-MONGO_URL = "TU_LINK_DE_MONGODB_AQUI"
+MONGO_URL = "mongodb+srv://gtech:Ingenieria2026@g-tech.0p52gdx.mongodb.net/?appName=G-Tech"
 
 try:
     client = MongoClient(MONGO_URL, serverSelectionTimeoutMS=5000)
