@@ -119,15 +119,23 @@ else:
             with st.form("form_reg"):
                 c1, c2 = st.columns(2)
                 f_in = c1.date_input("Fecha Ingreso", value=datetime.now())
-                n_id = c2.text_input("ID Orden Sugerida", value=st.session_state.id_proxima)
+                n_id = c2.text_input("ID Orden", value=st.session_state.id_proxima)
                 cli, cant = c1.text_input("Cliente"), c2.number_input("Cantidad", min_value=1)
                 mat, f_out = c1.text_input("Material"), c2.date_input("Fecha Entrega")
                 up = st.file_uploader("Cargar Plano Técnico", type=['pdf','png','jpg'])
+                
                 if st.form_submit_button("💾 GUARDAR ORDEN"):
-                    if up:
-                        d = {"n_orden": n_id, "cliente": cli, "f_recepcion": str(f_in), "material": mat, "cantidad": cant, "entrega": str(f_out), "etapa": "Registro", "status": "Pendiente", "historial": []}
-                        ordenes_col.insert_one(d); st.session_state.ultima_orden = d; st.session_state.registro_ok = True; st.rerun()
-                    else: st.error("El plano técnico es obligatorio.")
+                    # VALIDACIÓN 1: Campos obligatorios
+                    if not n_id or not cli or not mat or up is None:
+                        st.error("⚠️ Error: Todos los campos (ID, Cliente, Material y Plano) son obligatorios.")
+                    else:
+                        # VALIDACIÓN 2: ID Duplicada
+                        existe = ordenes_col.find_one({"n_orden": n_id})
+                        if existe:
+                            st.error(f"❌ Error: El número de orden **{n_id}** ya existe en la base de datos.")
+                        else:
+                            d = {"n_orden": n_id, "cliente": cli, "f_recepcion": str(f_in), "material": mat, "cantidad": cant, "entrega": str(f_out), "etapa": "Registro", "status": "Pendiente", "historial": []}
+                            ordenes_col.insert_one(d); st.session_state.ultima_orden = d; st.session_state.registro_ok = True; st.rerun()
 
     with t2:
         st.markdown("### Seguimiento de Procesos")
