@@ -19,7 +19,7 @@ try:
 except:
     st.error("⚠️ Error de conexión con el servidor.")
 
-# --- 2. LÓGICA DE PROCESOS (Sin cambios) ---
+# --- 2. LÓGICA DE PROCESOS ---
 
 def obtener_primera_id_disponible():
     try:
@@ -41,8 +41,17 @@ def generar_pdf_completo_orden(datos):
     pdf.ln(20); pdf.set_text_color(0, 0, 0); pdf.set_font("Arial", 'B', 14)
     pdf.cell(0, 10, f"DETALLES DE LA ORDEN # {datos['n_orden']}", ln=True)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y()); pdf.ln(5)
+    
     pdf.set_font("Arial", 'B', 11)
-    detalles = [("Cliente:", datos['cliente']), ("Material:", datos['material']), ("Cantidad:", str(datos['cantidad'])), ("Fecha Ingreso:", datos['f_recepcion']), ("Fecha Entrega:", datos['entrega']), ("Etapa Inicial:", datos['etapa']), ("Estatus:", datos['status'])]
+    detalles = [
+        ("Cliente:", datos['cliente']), 
+        ("Material:", datos['material']), 
+        ("Cantidad:", str(datos['cantidad'])), 
+        ("Fecha Ingreso:", datos['f_recepcion']), 
+        ("Fecha Entrega:", datos['entrega']), 
+        ("Etapa Inicial:", datos['etapa']), 
+        ("Estatus:", datos['status'])
+    ]
     for label, valor in detalles:
         pdf.set_font("Arial", 'B', 11); pdf.cell(50, 10, label)
         pdf.set_font("Arial", '', 11); pdf.cell(0, 10, valor, ln=True)
@@ -73,54 +82,46 @@ st.set_page_config(page_title="G-Tech Engineering", layout="wide")
 
 st.markdown("""
     <style>
-    /* Fondo y tipografía general */
     .stApp {
-        background: linear-gradient(to bottom, #ffffff, #f0f2f6);
+        background: linear-gradient(180deg, #ffffff 0%, #eef2f7 100%);
     }
     
-    /* Contenedor de Bienvenida */
     .welcome-container {
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        padding-top: 100px;
+        height: 70vh;
+        text-align: center;
     }
     
     .main-title {
         color: #0e4b7a;
-        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-        font-size: 4rem;
-        font-weight: 800;
-        letter-spacing: -2px;
-        margin-bottom: 10px;
-        text-align: center;
-    }
-    
-    .sub-title {
-        color: #555;
-        font-size: 1.2rem;
-        margin-bottom: 40px;
-        text-align: center;
+        font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        font-size: 6rem; /* Letra mucho más grande */
+        font-weight: 900;
+        letter-spacing: -3px;
+        margin-bottom: 50px;
+        line-height: 1;
     }
 
-    /* Estilo del botón personalizado */
+    /* Botón */
     div.stButton > button {
         background-color: #0e4b7a;
         color: white;
-        font-size: 18px;
-        font-weight: bold;
-        padding: 15px 40px;
-        border-radius: 50px;
+        font-size: 22px;
+        font-weight: 700;
+        padding: 20px 60px;
+        border-radius: 12px; /* Bordes un poco más rectos pero modernos */
         border: none;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 15px rgba(14, 75, 122, 0.3);
+        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        box-shadow: 0 10px 20px rgba(14, 75, 122, 0.2);
     }
     
     div.stButton > button:hover {
-        background-color: #155a8a;
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(14, 75, 122, 0.4);
+        background-color: #1a5f96;
+        transform: scale(1.05);
+        box-shadow: 0 15px 25px rgba(14, 75, 122, 0.3);
         color: white;
     }
     </style>
@@ -133,20 +134,19 @@ if 'auth' not in st.session_state: st.session_state.auth = False
 if 'id_proxima' not in st.session_state: st.session_state.id_proxima = obtener_primera_id_disponible()
 if 'registro_ok' not in st.session_state: st.session_state.registro_ok = False
 
-# --- PANTALLA DE INICIO MEJORADA ---
+# PANTALLA DE INICIO
 if not st.session_state.auth:
     st.markdown('<div class="welcome-container">', unsafe_allow_html=True)
-    st.markdown('<p class="main-title">G-TECH ENGINEERING</p>', unsafe_allow_html=True)
-    st.markdown('<p class="sub-title">SISTEMA INTEGRAL DE CONTROL DE CALIDAD Y PROCESOS</p>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-title">G-TECH<br>ENGINEERING</h1>', unsafe_allow_html=True)
     
-    _, btn_col, _ = st.columns([1, 0.6, 1])
+    _, btn_col, _ = st.columns([1, 0.8, 1])
     with btn_col:
         if st.button("🔓 INGRESAR AL PANEL"):
             st.session_state.auth = True
             st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
-# --- PANEL DE CONTROL (POST-LOGIN) ---
+# PANEL DE CONTROL
 else:
     st.markdown("<h2 style='text-align:center; color:#0e4b7a; margin-bottom:30px;'>🛡️ Panel de Control Operativo</h2>", unsafe_allow_html=True)
     t1, t2, t3 = st.tabs(["📝 REGISTRO DE ORDEN", "⚙️ TRAZABILIDAD", "📊 HISTORIAL"])
