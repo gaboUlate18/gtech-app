@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import datetime
 
 # 1. CONEXIÓN A LA BASE DE DATOS
-client = MongoClient("TU_LINK_DE_MONGODB_AQUI")
+client = MongoClient("mongodb+srv://gtech:Ingenieria2026@g-tech.0p52gdx.mongodb.net/?appName=G-Tech")
 db = client.GTechDB
 ordenes_col = db.ordenes
 
