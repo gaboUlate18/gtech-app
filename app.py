@@ -2,7 +2,6 @@ import streamlit as st
 from pymongo import MongoClient
 import pandas as pd
 from datetime import datetime
-import io
 
 # 1. CONEXIÓN A LA BASE DE DATOS
 client = MongoClient("mongodb+srv://gtech:Ingenieria2026@g-tech.0p52gdx.mongodb.net/?appName=G-Tech")
@@ -47,57 +46,50 @@ else:
     with tab1:
         st.markdown("<h3>Formulario de Recepción</h3>", unsafe_allow_html=True)
         
-        # Quitamos clear_on_submit para que los datos NO se borren solos al fallar
+        # El formulario se queda con clear_on_submit=False para no borrar datos si hay error
         with st.form("form_registro", clear_on_submit=False):
             col_a, col_b = st.columns(2)
             f_recepcion = col_a.date_input("Fecha de recepción de orden", value=datetime.now())
             n_orden = col_b.text_input("Número de Orden (ID)")
-            
             cliente = col_a.text_input("Cliente")
             cant_piezas = col_b.number_input("Cantidad de piezas", min_value=1, step=1)
-            
             material = col_a.text_input("Material / Especificación")
             f_entrega = col_b.date_input("Fecha de entrega prometida")
-            
             st.markdown("---")
             planos = st.radio("¿Tiene planos del cliente?", ["Sí", "No"], horizontal=True)
-            
             archivo_plano = st.file_uploader("Adjuntar planos técnicos (Obligatorio si marcó 'Sí')", type=['pdf', 'png', 'jpg'])
 
-            if st.form_submit_button("GUARDAR ORDEN"):
-                # VALIDACIÓN ESTRICTA
-                if planos == "No":
-                    st.error("❌ ACCESO DENEGADO: No se puede registrar la orden sin planos. Solicite planos antes de intentar de nuevo.")
-                    # Como clear_on_submit es False, los datos siguen ahí para que el usuario los corrija
-                elif planos == "Sí" and archivo_plano is None:
-                    st.error("❌ ERROR DE DOCUMENTACIÓN: Debe adjuntar el archivo de planos.")
-                elif not n_orden or not cliente:
-                    st.warning("⚠️ CAMPOS INCOMPLETOS: N° de orden y cliente son requeridos.")
-                else:
-                    # SI TODO ESTÁ BIEN, GUARDAMOS
-                    nueva_orden = {
-                        "n_orden": n_orden,
-                        "cliente": cliente,
-                        "f_recepcion": str(f_recepcion),
-                        "material": material,
-                        "cantidad": cant_piezas,
-                        "entrega": str(f_entrega),
-                        "etapa": "Diseño",
-                        "status": "Pendiente",
-                        "historial": []
-                    }
-                    ordenes_col.insert_one(nueva_orden)
-                    st.success(f"✅ Orden {n_orden} guardada. El formulario se limpiará al realizar la siguiente acción.")
-                    
-                    # Generación de PDF
-                    pdf_content = f"G-TECH REPORT\nIngreso: {n_orden}\nCliente: {cliente}"
-                    st.download_button("📂 Descargar PDF de Ingreso", data=pdf_content, file_name=f"Ingreso_{n_orden}.pdf")
-                    
-                    # FORZAMOS EL REINICIO MANUAL: Solo después de un éxito rotundo
-                    st.info("Haga clic en cualquier otra pestaña o refresque para ingresar una nueva orden limpia.")
-                    st.rerun()
+            submit_registro = st.form_submit_button("GUARDAR ORDEN")
 
-    # --- SECCIÓN 2: TRAZABILIDAD (Mantiene lógica anterior) ---
+        # LA LÓGICA DE GUARDADO Y EL BOTÓN DE PDF VAN AFUERA DEL FORM
+        if submit_registro:
+            if planos == "No":
+                st.error("❌ ACCESO DENEGADO: No se puede registrar la orden sin planos. Solicite planos antes de intentar de nuevo.")
+            elif planos == "Sí" and archivo_plano is None:
+                st.error("❌ ERROR DE DOCUMENTACIÓN: Debe adjuntar el archivo de planos.")
+            elif not n_orden or not cliente:
+                st.warning("⚠️ CAMPOS INCOMPLETOS: N° de orden y cliente son requeridos.")
+            else:
+                nueva_orden = {
+                    "n_orden": n_orden,
+                    "cliente": cliente,
+                    "f_recepcion": str(f_recepcion),
+                    "material": material,
+                    "cantidad": cant_piezas,
+                    "entrega": str(f_entrega),
+                    "etapa": "Diseño",
+                    "status": "Pendiente",
+                    "historial": []
+                }
+                ordenes_col.insert_one(nueva_orden)
+                st.success(f"✅ Orden {n_orden} guardada exitosamente en el sistema.")
+                
+                # BOTÓN DE DESCARGA FUERA DEL FORM
+                pdf_content = f"G-TECH REPORT\nIngreso: {n_orden}\nCliente: {cliente}\nFecha: {f_recepcion}"
+                st.download_button("📂 DESCARGAR PDF DE INGRESO", data=pdf_content, file_name=f"Ingreso_{n_orden}.pdf")
+                st.info("Una vez descargado el PDF, puede refrescar la página para una nueva entrada limpia.")
+
+    # --- SECCIÓN 2: TRAZABILIDAD ---
     with tab2:
         st.markdown("<h3>Actualización de Producción</h3>", unsafe_allow_html=True)
         pendientes = list(ordenes_col.find({"status": {"$ne": "Finalizado"}}))
@@ -111,16 +103,19 @@ else:
                 h_inicio = c1.time_input("Hora Inicio")
                 h_fin = c2.time_input("Hora Fin")
                 notas = st.text_area("Observaciones")
+                submit_update = st.form_submit_button("ACTUALIZAR ETAPA")
 
-                if st.form_submit_button("ACTUALIZAR ETAPA"):
-                    nuevo_status = "Finalizado" if etapa_nueva == "Finalizado" else "Pendiente"
-                    ordenes_col.update_one(
-                        {"n_orden": orden_sel},
-                        {"$set": {"etapa": etapa_nueva, "status": nuevo_status},
-                         "$push": {"historial": {"etapa": etapa_nueva, "inicio": str(h_inicio), "fin": str(h_fin), "nota": notas}}}
-                    )
-                    st.success(f"✅ {orden_sel} actualizado exitosamente.")
-                    st.rerun()
+            if submit_update:
+                nuevo_status = "Finalizado" if etapa_nueva == "Finalizado" else "Pendiente"
+                ordenes_col.update_one(
+                    {"n_orden": orden_sel},
+                    {"$set": {"etapa": etapa_nueva, "status": nuevo_status},
+                     "$push": {"historial": {"etapa": etapa_nueva, "inicio": str(h_inicio), "fin": str(h_fin), "nota": notas}}}
+                )
+                st.success(f"✅ {orden_sel} actualizado correctamente.")
+                # Botón de PDF fuera del form
+                reporte_etapa = f"TRAZABILIDAD G-TECH\nOrden: {orden_sel}\nEtapa: {etapa_nueva}"
+                st.download_button("📂 DESCARGAR PDF DE ETAPA", data=reporte_etapa, file_name=f"Update_{orden_sel}.pdf")
         else:
             st.info("No hay órdenes pendientes.")
 
@@ -142,5 +137,8 @@ else:
                 return ''
 
             st.dataframe(df_display.style.applymap(highlight_status, subset=['status']), use_container_width=True)
+            
+            # Botón de reporte general (Este siempre estuvo fuera del form, así que no falla)
+            st.download_button("📂 GENERAR REPORTE GENERAL", data=df_display.to_csv(), file_name="Reporte_GTech.csv")
         else:
             st.warning("Sin registros.")
