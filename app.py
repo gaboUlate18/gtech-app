@@ -47,7 +47,7 @@ def generar_pdf_completo_orden(datos):
         ("Cantidad:", str(datos['cantidad'])), 
         ("Ingreso:", datos['f_recepcion']), 
         ("Entrega:", datos['entrega']), 
-        ("Etapa Actual:", datos['etapa']), 
+        ("Etapa Inicial:", datos['etapa']), 
         ("Estatus:", datos['status'])
     ]
     for k, v in campos:
@@ -75,50 +75,17 @@ def reset_manual():
     st.session_state.registro_ok = False
     st.session_state.id_proxima = obtener_primera_id_disponible()
 
-# --- 3. ESTILO VISUAL (TODO CENTRADO) ---
+# --- 3. ESTILO VISUAL (PANTALLA DE INICIO) ---
 st.set_page_config(page_title="G-Tech Engineering", layout="wide")
 
 st.markdown("""
     <style>
-    .stApp {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    .welcome-container {
-        text-align: center;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        width: 100%;
-    }
-    .main-title {
-        color: #0e4b7a;
-        font-size: 6.5rem;
-        font-weight: 900;
-        margin-bottom: 40px;
-        line-height: 1;
-    }
-    div.stButton {
-        display: flex;
-        justify-content: center;
-    }
-    div.stButton > button {
-        background-color: #0e4b7a;
-        color: white;
-        font-size: 26px;
-        font-weight: bold;
-        padding: 20px 100px;
-        border-radius: 15px;
-        border: none;
-        box-shadow: 0 10px 20px rgba(14, 75, 122, 0.2);
-    }
-    div.stButton > button:hover {
-        background-color: #1a5f96;
-        transform: scale(1.05);
-        color: white;
-    }
+    .stApp { display: flex; align-items: center; justify-content: center; }
+    .welcome-container { text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; }
+    .main-title { color: #0e4b7a; font-size: 6.5rem; font-weight: 900; margin-bottom: 40px; line-height: 1; }
+    div.stButton { display: flex; justify-content: center; }
+    div.stButton > button { background-color: #0e4b7a; color: white; font-size: 26px; font-weight: bold; padding: 20px 100px; border-radius: 15px; border: none; box-shadow: 0 10px 20px rgba(14, 75, 122, 0.2); }
+    div.stButton > button:hover { background-color: #1a5f96; transform: scale(1.05); color: white; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -129,7 +96,6 @@ if 'auth' not in st.session_state: st.session_state.auth = False
 if 'id_proxima' not in st.session_state: st.session_state.id_proxima = obtener_primera_id_disponible()
 if 'registro_ok' not in st.session_state: st.session_state.registro_ok = False
 
-# PANTALLA DE INICIO
 if not st.session_state.auth:
     st.markdown('<div class="welcome-container">', unsafe_allow_html=True)
     st.markdown('<h1 class="main-title">G-TECH<br>ENGINEERING</h1>', unsafe_allow_html=True)
@@ -138,14 +104,13 @@ if not st.session_state.auth:
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
-# PANEL DE CONTROL
 else:
     st.markdown("<h2 style='text-align:center; color:#0e4b7a;'>🛡️ Panel de Control</h2>", unsafe_allow_html=True)
     t1, t2, t3 = st.tabs(["📝 REGISTRO", "⚙️ TRAZABILIDAD", "📊 HISTORIAL"])
 
     with t1:
         if st.session_state.get('registro_ok'):
-            st.success("✅ Orden registrada.")
+            st.success("✅ Orden registrada satisfactoriamente.")
             pdf_b = generar_pdf_completo_orden(st.session_state.ultima_orden)
             c1, c2 = st.columns(2)
             c1.download_button("📥 DESCARGAR PDF", data=pdf_b, file_name=f"Orden_{st.session_state.ultima_orden['n_orden']}.pdf")
@@ -158,27 +123,46 @@ else:
                 cli, cant = c1.text_input("Cliente"), c2.number_input("Cantidad", min_value=1)
                 mat, f_out = c1.text_input("Material"), c2.date_input("Fecha Entrega")
                 up = st.file_uploader("Plano Técnico", type=['pdf','png','jpg'])
-                if st.form_submit_button("💾 GUARDAR"):
+                if st.form_submit_button("💾 GUARDAR ORDEN"):
                     if up:
                         d = {"n_orden": n_id, "cliente": cli, "f_recepcion": str(f_in), "material": mat, "cantidad": cant, "entrega": str(f_out), "etapa": "Registro", "status": "Pendiente", "historial": []}
                         ordenes_col.insert_one(d); st.session_state.ultima_orden = d; st.session_state.registro_ok = True; st.rerun()
-                if st.form_submit_button("🧹 LIMPIAR"): reset_manual(); st.rerun()
+                    else: st.error("El plano técnico es obligatorio.")
 
     with t2:
         activas = list(ordenes_col.find({"status": "Pendiente"}))
         if activas:
             with st.form("form_traz"):
-                sel = st.selectbox("Orden", [o["n_orden"] for o in activas])
+                sel = st.selectbox("Seleccionar Orden", [o["n_orden"] for o in activas])
                 orden_data = next(item for item in activas if item["n_orden"] == sel)
+                
                 et_act = str(orden_data.get("etapa", "Registro")).strip()
-                idx = ETAPAS_MASTER.index(et_act) if et_act in ETAPAS_MASTER else 0
-                disp = ETAPAS_MASTER[idx + 1:]
+                
+                # RESTRICCIÓN DE ETAPAS: Solo permite avanzar
+                if et_act in ETAPAS_MASTER:
+                    idx = ETAPAS_MASTER.index(et_act)
+                    disp = ETAPAS_MASTER[idx + 1:] # Solo etapas posteriores a la actual
+                else:
+                    disp = ETAPAS_MASTER[1:] # Si no se encuentra, permite desde la segunda etapa
+                
                 if disp:
                     et = st.selectbox("Siguiente Etapa", disp)
                     h1, h2 = st.columns(2)
-                    t_i = h1.time_input("Inicio") # CORREGIDO: h1 asignado correctamente
-                    t_f = h2.time_input("Fin")    # CORREGIDO: h2 asignado correctamente
-                    obs = st.text_area("Notas")
-                    if st.form_submit_button("ACTUALIZAR"):
+                    t_i, t_f = h1.time_input("Hora Inicio"), h2.time_input("Hora Fin")
+                    obs = st.text_area("Observaciones de la etapa")
+                    if st.form_submit_button("ACTUALIZAR PROCESO"):
                         st_f = "Finalizado" if et == "Finalizado" else "Pendiente"
                         ordenes_col.update_one({"n_orden": sel}, {"$set": {"etapa": et, "status": st_f}, "$push": {"historial": {"etapa": et, "inicio": str(t_i), "fin": str(t_f), "nota": obs}}})
+                        st.success(f"Orden {sel} movida a {et}."); time.sleep(1); st.rerun()
+                else:
+                    st.warning("Esta orden ya alcanzó la etapa final disponible.")
+                    st.form_submit_button("Cerrar", disabled=True)
+        else: st.info("No hay órdenes pendientes de proceso.")
+
+    with t3:
+        todo = list(ordenes_col.find())
+        if todo:
+            df = pd.DataFrame(todo)[["n_orden", "cliente", "material", "etapa", "status"]]
+            st.dataframe(df.style.map(lambda x: f'background-color: {"#d4edda" if x == "Finalizado" else "#f8d7da"}', subset=['status']), use_container_width=True)
+            if st.button("📄 GENERAR REPORTE COMPLETO"):
+                st.download_button("📥 DESCARGAR", data=generar_pdf_tabla_historial(df), file_name="Historial_GTech.pdf")
