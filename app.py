@@ -42,31 +42,14 @@ def generar_pdf_completo_orden(datos):
     pdf.line(10, pdf.get_y(), 200, pdf.get_y()); pdf.ln(5)
     
     campos = [
-        ("Cliente:", datos['cliente']), 
-        ("Material:", datos['material']), 
-        ("Cantidad:", str(datos['cantidad'])), 
-        ("Ingreso:", datos['f_recepcion']), 
-        ("Entrega:", datos['entrega']), 
-        ("Etapa Inicial:", datos['etapa']), 
+        ("Cliente:", datos['cliente']), ("Material:", datos['material']), 
+        ("Cantidad:", str(datos['cantidad'])), ("Ingreso:", datos['f_recepcion']), 
+        ("Entrega:", datos['entrega']), ("Etapa Inicial:", datos['etapa']), 
         ("Estatus:", datos['status'])
     ]
     for k, v in campos:
         pdf.set_font("Arial", 'B', 11); pdf.cell(50, 10, k)
         pdf.set_font("Arial", '', 11); pdf.cell(0, 10, str(v), ln=True)
-    return pdf.output(dest='S').encode('latin-1')
-
-def generar_pdf_tabla_historial(df):
-    pdf = FPDF(orientation='L')
-    pdf.add_page()
-    pdf.set_font("Arial", 'B', 16); pdf.cell(0, 10, "HISTORIAL G-TECH", ln=True, align='C')
-    pdf.ln(10); pdf.set_font("Arial", 'B', 10); pdf.set_fill_color(200, 200, 200)
-    headers, widths = ["Orden", "Cliente", "Material", "Etapa", "Estado"], [30, 70, 70, 50, 40]
-    for i, h in enumerate(headers): pdf.cell(widths[i], 10, h, border=1, fill=True)
-    pdf.ln(); pdf.set_font("Arial", size=9)
-    for _, row in df.iterrows():
-        for i, col in enumerate(["n_orden", "cliente", "material", "etapa", "status"]):
-            pdf.cell(widths[i], 8, str(row[col])[:35], border=1)
-        pdf.ln()
     return pdf.output(dest='S').encode('latin-1')
 
 def reset_manual():
@@ -83,8 +66,7 @@ st.markdown("""
     .stApp { display: flex; align-items: center; justify-content: center; }
     .welcome-container { text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; }
     .main-title { color: #0e4b7a; font-size: 6.5rem; font-weight: 900; margin-bottom: 40px; line-height: 1; }
-    div.stButton { display: flex; justify-content: center; }
-    div.stButton > button { background-color: #0e4b7a; color: white; font-size: 26px; font-weight: bold; padding: 20px 100px; border-radius: 15px; border: none; box-shadow: 0 10px 20px rgba(14, 75, 122, 0.2); }
+    div.stButton > button { background-color: #0e4b7a; color: white; font-size: 26px; font-weight: bold; padding: 20px 100px; border-radius: 15px; border: none; }
     div.stButton > button:hover { background-color: #1a5f96; transform: scale(1.05); color: white; }
     </style>
     """, unsafe_allow_html=True)
@@ -130,39 +112,51 @@ else:
                     else: st.error("El plano técnico es obligatorio.")
 
     with t2:
+        st.markdown("### Actualización de Etapa")
         activas = list(ordenes_col.find({"status": "Pendiente"}))
+        
         if activas:
-            with st.form("form_traz"):
-                sel = st.selectbox("Seleccionar Orden", [o["n_orden"] for o in activas])
-                orden_data = next(item for item in activas if item["n_orden"] == sel)
-                
-                et_act = str(orden_data.get("etapa", "Registro")).strip()
-                
-                # RESTRICCIÓN DE ETAPAS: Solo permite avanzar
-                if et_act in ETAPAS_MASTER:
-                    idx = ETAPAS_MASTER.index(et_act)
-                    disp = ETAPAS_MASTER[idx + 1:] # Solo etapas posteriores a la actual
-                else:
-                    disp = ETAPAS_MASTER[1:] # Si no se encuentra, permite desde la segunda etapa
-                
-                if disp:
-                    et = st.selectbox("Siguiente Etapa", disp)
+            # SELECTOR FUERA DEL FORM para actualización inmediata
+            lista_ids = [o["n_orden"] for o in activas]
+            sel_orden = st.selectbox("1. Seleccione el número de orden", lista_ids)
+            
+            # Buscamos la data de la orden seleccionada
+            orden_data = next(item for item in activas if item["n_orden"] == sel_orden)
+            et_act = str(orden_data.get("etapa", "Registro")).strip()
+            
+            # Filtro de etapas (Poka-Yoke)
+            if et_act in ETAPAS_MASTER:
+                idx = ETAPAS_MASTER.index(et_act)
+                disp = ETAPAS_MASTER[idx + 1:]
+            else:
+                disp = ETAPAS_MASTER[1:]
+
+            if disp:
+                # FORMULARIO SOLO PARA LOS DATOS DE LA ETAPA
+                with st.form("form_update_etapa"):
+                    st.info(f"Etapa actual: **{et_act}**")
+                    et_nueva = st.selectbox("2. Seleccione la siguiente etapa", disp)
                     h1, h2 = st.columns(2)
                     t_i, t_f = h1.time_input("Hora Inicio"), h2.time_input("Hora Fin")
-                    obs = st.text_area("Observaciones de la etapa")
-                    if st.form_submit_button("ACTUALIZAR PROCESO"):
-                        st_f = "Finalizado" if et == "Finalizado" else "Pendiente"
-                        ordenes_col.update_one({"n_orden": sel}, {"$set": {"etapa": et, "status": st_f}, "$push": {"historial": {"etapa": et, "inicio": str(t_i), "fin": str(t_f), "nota": obs}}})
-                        st.success(f"Orden {sel} movida a {et}."); time.sleep(1); st.rerun()
-                else:
-                    st.warning("Esta orden ya alcanzó la etapa final disponible.")
-                    st.form_submit_button("Cerrar", disabled=True)
-        else: st.info("No hay órdenes pendientes de proceso.")
+                    obs = st.text_area("Observaciones")
+                    
+                    if st.form_submit_button("✅ CONFIRMAR CAMBIO DE ETAPA"):
+                        st_f = "Finalizado" if et_nueva == "Finalizado" else "Pendiente"
+                        ordenes_col.update_one(
+                            {"n_orden": sel_orden}, 
+                            {"$set": {"etapa": et_nueva, "status": st_f}, 
+                             "$push": {"historial": {"etapa": et_nueva, "inicio": str(t_i), "fin": str(t_f), "nota": obs}}}
+                        )
+                        st.success(f"Orden {sel_orden} actualizada a {et_nueva}.")
+                        time.sleep(1)
+                        st.rerun()
+            else:
+                st.warning("Esta orden ya alcanzó la etapa final.")
+        else:
+            st.info("No hay órdenes pendientes.")
 
     with t3:
         todo = list(ordenes_col.find())
         if todo:
             df = pd.DataFrame(todo)[["n_orden", "cliente", "material", "etapa", "status"]]
             st.dataframe(df.style.map(lambda x: f'background-color: {"#d4edda" if x == "Finalizado" else "#f8d7da"}', subset=['status']), use_container_width=True)
-            if st.button("📄 GENERAR REPORTE COMPLETO"):
-                st.download_button("📥 DESCARGAR", data=generar_pdf_tabla_historial(df), file_name="Historial_GTech.pdf")
