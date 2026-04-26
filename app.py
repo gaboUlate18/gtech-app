@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime
 
 # 1. CONEXIÓN A LA BASE DE DATOS
+# REEMPLAZA EL LINK CON TU CADENA DE CONEXIÓN REAL
 client = MongoClient("mongodb+srv://gtech:Ingenieria2026@g-tech.0p52gdx.mongodb.net/?appName=G-Tech")
 db = client.GTechDB
 ordenes_col = db.ordenes
@@ -11,13 +12,18 @@ ordenes_col = db.ordenes
 # CONFIGURACIÓN DE PÁGINA
 st.set_page_config(page_title="G-Tech Engineering System", layout="wide")
 
-# ESTILO CSS
+# ESTILO CSS AVANZADO
 st.markdown("""
     <style>
     .stApp { background-color: #f4f7f9; }
     h1 { color: #0e4b7a; font-family: 'Segoe UI'; font-weight: 700; text-align: center; }
     h3 { color: #1a5a96; border-bottom: 2px solid #1a5a96; padding-bottom: 10px; }
-    .stButton>button { width: 100%; border-radius: 8px; height: 3.5em; background-color: #1a5a96; color: white; font-weight: bold; }
+    .stButton>button { 
+        width: 100%; border-radius: 8px; height: 3.5em; 
+        background-color: #1a5a96; color: white; font-weight: bold;
+    }
+    .stTabs [data-baseweb="tab-list"] { gap: 8px; justify-content: center; }
+    .stTabs [aria-selected="true"] { background-color: #1a5a96 !important; color: white !important; }
     [data-testid="stForm"] { background-color: white; padding: 30px; border-radius: 15px; border: 1px solid #d3d9de; }
     .welcome-container { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 60vh; text-align: center; }
     </style>
@@ -46,7 +52,7 @@ else:
     with tab1:
         st.markdown("<h3>Formulario de Recepción</h3>", unsafe_allow_html=True)
         
-        # El formulario se queda con clear_on_submit=False para no borrar datos si hay error
+        # clear_on_submit=False para que los datos permanezcan si hay un error de validación
         with st.form("form_registro", clear_on_submit=False):
             col_a, col_b = st.columns(2)
             f_recepcion = col_a.date_input("Fecha de recepción de orden", value=datetime.now())
@@ -61,14 +67,14 @@ else:
 
             submit_registro = st.form_submit_button("GUARDAR ORDEN")
 
-        # LA LÓGICA DE GUARDADO Y EL BOTÓN DE PDF VAN AFUERA DEL FORM
+        # Lógica de validación fuera del formulario para permitir st.download_button
         if submit_registro:
             if planos == "No":
-                st.error("❌ ACCESO DENEGADO: No se puede registrar la orden sin planos. Solicite planos antes de intentar de nuevo.")
+                st.error("❌ ACCESO DENEGADO: No se puede registrar la orden sin planos. Se requiere documentación técnica para iniciar el proceso.")
             elif planos == "Sí" and archivo_plano is None:
-                st.error("❌ ERROR DE DOCUMENTACIÓN: Debe adjuntar el archivo de planos.")
+                st.error("❌ ERROR DE DOCUMENTACIÓN: Ha indicado que tiene planos pero no ha adjuntado el archivo.")
             elif not n_orden or not cliente:
-                st.warning("⚠️ CAMPOS INCOMPLETOS: N° de orden y cliente son requeridos.")
+                st.warning("⚠️ CAMPOS REQUERIDOS: El número de orden y el nombre del cliente son obligatorios.")
             else:
                 nueva_orden = {
                     "n_orden": n_orden,
@@ -82,12 +88,12 @@ else:
                     "historial": []
                 }
                 ordenes_col.insert_one(nueva_orden)
-                st.success(f"✅ Orden {n_orden} guardada exitosamente en el sistema.")
+                st.success(f"✅ Orden {n_orden} guardada correctamente.")
                 
-                # BOTÓN DE DESCARGA FUERA DEL FORM
-                pdf_content = f"G-TECH REPORT\nIngreso: {n_orden}\nCliente: {cliente}\nFecha: {f_recepcion}"
-                st.download_button("📂 DESCARGAR PDF DE INGRESO", data=pdf_content, file_name=f"Ingreso_{n_orden}.pdf")
-                st.info("Una vez descargado el PDF, puede refrescar la página para una nueva entrada limpia.")
+                # Botón de descarga (ahora funciona porque está fuera del st.form)
+                pdf_resumen = f"REPORTE DE INGRESO G-TECH\nOrden: {n_orden}\nCliente: {cliente}\nFecha: {f_recepcion}\nCant: {cant_piezas}"
+                st.download_button("📂 DESCARGAR PDF DE INGRESO", data=pdf_resumen, file_name=f"Ingreso_{n_orden}.pdf")
+                st.info("Nota: Los datos se mantendrán en pantalla hasta que refresque o cambie de sección.")
 
     # --- SECCIÓN 2: TRAZABILIDAD ---
     with tab2:
@@ -102,7 +108,7 @@ else:
                 c1, c2 = st.columns(2)
                 h_inicio = c1.time_input("Hora Inicio")
                 h_fin = c2.time_input("Hora Fin")
-                notas = st.text_area("Observaciones")
+                notas = st.text_area("Observaciones de Proceso")
                 submit_update = st.form_submit_button("ACTUALIZAR ETAPA")
 
             if submit_update:
@@ -112,33 +118,41 @@ else:
                     {"$set": {"etapa": etapa_nueva, "status": nuevo_status},
                      "$push": {"historial": {"etapa": etapa_nueva, "inicio": str(h_inicio), "fin": str(h_fin), "nota": notas}}}
                 )
-                st.success(f"✅ {orden_sel} actualizado correctamente.")
-                # Botón de PDF fuera del form
-                reporte_etapa = f"TRAZABILIDAD G-TECH\nOrden: {orden_sel}\nEtapa: {etapa_nueva}"
-                st.download_button("📂 DESCARGAR PDF DE ETAPA", data=reporte_etapa, file_name=f"Update_{orden_sel}.pdf")
+                st.success(f"✅ Etapa '{etapa_nueva}' registrada para la orden {orden_sel}.")
+                
+                pdf_etapa = f"TRAZABILIDAD G-TECH\nOrden: {orden_sel}\nEtapa Actualizada: {etapa_nueva}\nStatus: {nuevo_status}"
+                st.download_button("📂 DESCARGAR PDF DE ACTUALIZACIÓN", data=pdf_etapa, file_name=f"Trazabilidad_{orden_sel}.pdf")
         else:
-            st.info("No hay órdenes pendientes.")
+            st.info("No existen órdenes pendientes de finalización.")
 
-    # --- SECCIÓN 3: ÓRDENES REGISTRADAS ---
+    # --- SECCIÓN 3: ÓRDENES REGISTRADAS (Pestaña aparte) ---
     with tab3:
         st.markdown("<h3>Historial de Producción</h3>", unsafe_allow_html=True)
         raw_data = list(ordenes_col.find())
+        
         if raw_data:
             df = pd.DataFrame(raw_data)
             columnas_finales = ["n_orden", "cliente", "f_recepcion", "cantidad", "etapa", "status", "entrega"]
+            
+            # Asegurar que no falten columnas por registros viejos
             for col in columnas_finales:
-                if col not in df.columns: df[col] = "---"
+                if col not in df.columns:
+                    df[col] = "---"
             
             df_display = df[columnas_finales]
             
             def highlight_status(val):
-                if val == 'Finalizado': return 'background-color: #d4edda; color: #155724'
-                if val == 'Pendiente': return 'background-color: #fff3cd; color: #856404'
+                if val == 'Finalizado': return 'background-color: #d4edda; color: #155724' # Verde claro
+                if val == 'Pendiente': return 'background-color: #fff3cd; color: #856404' # Amarillo claro
                 return ''
 
-            st.dataframe(df_display.style.applymap(highlight_status, subset=['status']), use_container_width=True)
+            # Uso de .map() para compatibilidad con versiones nuevas de Pandas
+            try:
+                st.dataframe(df_display.style.map(highlight_status, subset=['status']), use_container_width=True)
+            except AttributeError:
+                st.dataframe(df_display.style.applymap(highlight_status, subset=['status']), use_container_width=True)
             
-            # Botón de reporte general (Este siempre estuvo fuera del form, así que no falla)
-            st.download_button("📂 GENERAR REPORTE GENERAL", data=df_display.to_csv(), file_name="Reporte_GTech.csv")
+            st.markdown("---")
+            st.download_button("📂 GENERAR REPORTE GENERAL (CSV)", data=df_display.to_csv(index=False), file_name="Reporte_General_GTech.csv")
         else:
-            st.warning("Sin registros.")
+            st.warning("No se encontraron registros en la base de datos.")
